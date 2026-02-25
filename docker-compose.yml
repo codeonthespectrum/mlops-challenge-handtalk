@@ -19,8 +19,8 @@ services:
       --output_dir ${OUTPUT_DIR:-data/processed}
       --dataset_name ${DATASET_NAME:-para_crawl/enpt}
       --max_tokens ${MAX_TOKENS:-64}
-      --train_records ${TRAIN_RECORDS:-5000}
-      --val_records ${VAL_RECORDS:-500}
+      --train_records ${TRAIN_RECORDS:-20000}
+      --val_records ${VAL_RECORDS:-2000}
       --seed ${SEED:-42}"
 
   train:
@@ -42,7 +42,7 @@ services:
       bash -lc "python -m ml.train
       --data_dir ${OUTPUT_DIR:-data/processed}
       --artifacts_dir ${ARTIFACTS_DIR:-artifacts}
-      --epochs ${EPOCHS:-30}
+      --epochs ${EPOCHS:-10}
       --batch_size ${BATCH_SIZE:-32}
       --threshold ${THRESHOLD:-0.30}
       --max_tokens ${MAX_TOKENS:-64}

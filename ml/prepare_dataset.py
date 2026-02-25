@@ -95,7 +95,7 @@ def prepare_dataset(
     train_ds = examples["train"]
 
     # O dataset "para_crawl/enpt" não tem split de validação, então criamos um a partir do treino
-    val_ds = train_ds.take(10_000)
+    val_ds = train_ds.take(50_000)
 
     train_ds = train_ds.shuffle(50_000, seed=seed, reshuffle_each_iteration=False)
 
