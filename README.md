@@ -1,205 +1,205 @@
-# 🌐 MLOps Challenge Starter — Neural Machine Translation (EN → PT)
+# MLOps Challenge — Neural Machine Translation (EN → PT)
 
-Repositório inicial (**starter kit**) para o desafio de MLOps. Contém as rotinas base de preparação de dados, treinamento e inferência para um modelo de tradução automática Inglês -> Português, utilizando um **Transformer** customizado com TensorFlow/Keras.
+Pipeline end-to-end de MLOps para modelo de tradução automática Inglês → Português, incluindo automação, orquestração, observabilidade e controle de acesso.
 
-> **O objetivo do candidato é construir a automação end-to-end (CI/CD, orquestração, monitoramento, etc.) em cima destas rotinas já fornecidas.**
->
-> 📄 **Consulte a especificação completa do desafio em [CHALLENGE.md](CHALLENGE.md).**
-
----
-
-## 📋 Visão Geral
-
-Este repositório fornece as **rotinas base** que o candidato utilizará para implementar a automação MLOps. As peças já inclusas são:
-
-| Componente | Descrição |
-|---|---|
-| **Preparação de Dados** | Download e tokenização do dataset [ParaCrawl EN-PT](https://www.paracrawl.eu/) via TensorFlow Datasets, exportando TFRecords prontos para treino |
-| **Treinamento** | Modelo Transformer (encoder-decoder) com warmup schedule, masked loss/accuracy e versionamento automático de artefatos |
-| **Inference API** | API REST (FastAPI + Uvicorn) para tradução em tempo real, com métricas, health check e hot-reload de modelos |
-| **Testes** | Suite de testes de contrato da API via Pytest + HTTPX |
-
-> [!IMPORTANT]
-> Estas rotinas já funcionam individualmente via Docker Compose. O desafio consiste em **automatizar e orquestrar** todo o ciclo de vida do modelo de ponta a ponta.
-
----
-
-## 🏗️ Arquitetura
+## 📋 Arquitetura
 
 ```
-mlops_challenge_starter/
-├── ml/                        # Pipeline de ML
-│   ├── common.py              # Utilitários (I/O JSON, hashing, run_id)
-│   ├── tokenizers.py          # Download e carregamento de tokenizers
-│   ├── prepare_dataset.py     # Preparação do dataset (TFRecords)
-│   ├── model.py               # Transformer (Encoder/Decoder/Positional Encoding)
-│   └── train.py               # Loop de treino, exportação de SavedModel
-│
-├── inference_api/             # API de inferência
-│   ├── main.py                # Endpoints FastAPI
-│   ├── model_manager.py       # Gerenciamento thread-safe do SavedModel
-│   ├── schemas.py             # Schemas Pydantic (request/response)
-│   ├── metrics.py             # Contadores de métricas da aplicação
-│   └── logging_config.py      # Configuração de logging estruturado
-│
-├── tests/                     # Testes automatizados
-│   └── test_api_contract.py   # Testes de contrato dos endpoints
-│
-├── data/                      # Dados processados (gerados)
-├── artifacts/                 # Artefatos de treino (SavedModel, configs)
-├── Dockerfile                 # Imagem base (Python 3.11-slim)
-├── docker-compose.yml         # Orquestração de todos os serviços
-└── requirements.txt           # Dependências Python
+┌─────────────────────────────────────────────────────────────────────┐
+│                         n8n (Orquestrador)                         │
+│                        localhost:5678                               │
+│                                                                     │
+│  Webhook ──► Preparar Dados ──► Treinar ──► Validar ──► Publicar ──► Deploy │
+└─────────────────────────────────────────────────────────────────────┘
+                                                          │
+                                                          ▼
+┌──────────────┐      ┌──────────────┐      ┌──────────────────────┐
+│   Cliente    │─────►│   Gateway    │─────►│    Inference API     │
+│              │      │ NGINX (:8080)│      │  FastAPI (:8000)     │
+│              │      │ • API Key    │      │  • /predict          │
+│              │      │ • Rate Limit │      │  • /health           │
+│              │      │ • Logging    │      │  • /metrics          │
+└──────────────┘      └──────────────┘      │  • /model            │
+                                            │  • /reload           │
+                                            └──────────┬───────────┘
+                                                       │
+                              ┌─────────────────────────┤
+                              ▼                         ▼
+                    ┌──────────────┐          ┌──────────────┐
+                    │  Prometheus  │─────────►│   Grafana    │
+                    │    (:9090)   │          │   (:3000)    │
+                    │  Coleta cada │          │  Dashboards  │
+                    │    15s       │          │              │
+                    └──────────────┘          └──────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                      CI/CD (GitHub Actions)                        │
+│  Push/PR ──► Lint (ruff) ──► Test (pytest) ──► Build ──► Publish  │
+│                                                  (GHCR)           │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
----
+## 🛠️ Pré-requisitos
 
-## 🧠 Modelo
+- Docker e Docker Compose
+- Git
 
-O modelo é um **Transformer** com arquitetura encoder-decoder implementado do zero:
+## 🚀 Como Executar
 
-- **Positional Encoding** — codificação posicional sinusoidal
-- **Encoder** — camadas com Multi-Head Attention + FFN + Layer Norm + Dropout
-- **Decoder** — camadas com Self-Attention + Cross-Attention + FFN + Layer Norm
-- **Learning Rate Schedule** — warmup linear seguido de decaimento inverso (baseado no paper *Attention Is All You Need*)
+### 1. Clonar o repositório
 
-### Hiperparâmetros padrão
+```bash
+git clone https://github.com/codeonthespectrum/mlops-challenge-handtalk.git
+cd mlops-challenge-handtalk
+```
 
-| Parâmetro | Valor |
-|---|---|
-| `num_layers` | 4 |
-| `d_model` | 128 |
-| `num_heads` | 4 |
-| `dff` | 512 |
-| `dropout` | 0.1 |
-| `max_tokens` | 64 |
-
----
-
-## 🚀 Executando as Rotinas (Quick Start)
-
-As rotinas podem ser executadas individualmente com Docker Compose usando **profiles**.
-
-### Pré-requisitos
-
-- [Docker](https://docs.docker.com/get-docker/) e [Docker Compose](https://docs.docker.com/compose/install/)
-
-### 1. Preparar o Dataset
+### 2. Preparar o Dataset
 
 ```bash
 docker compose --profile prepare up --build
 ```
 
-Baixa o dataset ParaCrawl EN-PT, tokeniza e gera TFRecords em `data/processed/`.
+Gera os TFRecords em `data/processed/`. Variáveis opcionais: `TRAIN_RECORDS`, `VAL_RECORDS`, `MAX_TOKENS`, `SEED`.
 
-**Variáveis opcionais:**
-
-| Variável | Padrão | Descrição |
-|---|---|---|
-| `DATASET_NAME` | `para_crawl/enpt` | Dataset do TFDS |
-| `MAX_TOKENS` | `64` | Máximo de tokens por sentença |
-| `TRAIN_RECORDS` | `5000` | Amostras de treino |
-| `VAL_RECORDS` | `500` | Amostras de validação |
-| `SEED` | `42` | Seed de reprodutibilidade |
-
-### 2. Treinar o Modelo
+### 3. Treinar o Modelo
 
 ```bash
 docker compose --profile train up
 ```
 
-Treina o Transformer e exporta o SavedModel versionado em `artifacts/<run_id>/`.
+Treina o Transformer e exporta o SavedModel em `artifacts/<run_id>/`. Variáveis opcionais: `EPOCHS`, `BATCH_SIZE`, `THRESHOLD`.
 
-**Variáveis opcionais:**
-
-| Variável | Padrão | Descrição |
-|---|---|---|
-| `EPOCHS` | `5` | Número de épocas |
-| `BATCH_SIZE` | `32` | Tamanho do batch |
-| `THRESHOLD` | `0.30` | Threshold de qualidade |
-| `GIT_SHA` | `unknown` | SHA do commit para rastreabilidade |
-
-### 3. Iniciar a API de Inferência
+### 4. Subir a API de Inferência
 
 ```bash
-docker compose --profile api up
+DEFAULT_RUN_ID=<run_id> docker compose --profile api up
 ```
 
-A API estará disponível em **http://localhost:8000**.
+API disponível em `http://localhost:8000`. Substitua `<run_id>` pelo ID gerado no treino.
 
-> **Dica:** Para especificar um modelo, defina `DEFAULT_RUN_ID=<run_id>`.
+### 5. Subir o API Gateway
 
-### 4. Executar os Testes
+```bash
+docker compose --profile gateway --profile api up
+```
+
+Gateway disponível em `http://localhost:8080`. Requer header `X-Api-Key: handtalk-secret-key-2026`.
+
+Exemplo de uso:
+
+```bash
+curl -X POST http://localhost:8080/predict \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: handtalk-secret-key-2026" \
+  -d '{"text": "Hello, how are you?"}'
+```
+
+### 6. Subir Observabilidade (Prometheus + Grafana)
+
+```bash
+docker compose --profile monitoring --profile api up
+```
+
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3000` (login padrão: admin/admin)
+
+### 7. Subir o Orquestrador n8n
+
+```bash
+docker compose --profile n8n up
+```
+
+n8n disponível em `http://localhost:5678`. O workflow pode ser importado a partir do arquivo `n8n_workflow.json`.
+
+### 8. Executar Testes
 
 ```bash
 docker compose --profile tests up
 ```
 
----
+## 📦 Estrutura do Projeto
 
-## 📡 Endpoints da API
-
-| Método | Rota | Descrição                                                          |
-|---|---|--------------------------------------------------------------------|
-| `GET` | `/health` | Health check — status, `run_id` e `model_loaded`                   |
-| `GET` | `/model` | Retorna o `run_id` do modelo ativo                                 |
-| `GET` | `/metrics` | Contadores: `requests_total`, `errors_total`, `translations_total` |
-| `POST` | `/predict` | Traduz texto EN → PT                                               |
-| `POST` | `/reload` | Hot-reload de modelo por `run_id` ou `artifacts_dir`               |
-| `GET` | `/docs` | Documentação interativa (Swagger UI)                               |
-
-### Exemplo — `/predict`
-
-**Request:**
-```bash
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Olá, como vai você?"}'
+```
+mlops-challenge-handtalk/
+├── .github/workflows/
+│   └── ci.yml                  # Pipeline CI/CD (GitHub Actions)
+├── ml/                         # Pipeline de ML
+│   ├── prepare_dataset.py      # Preparação do dataset
+│   ├── train.py                # Treinamento do modelo
+│   ├── model.py                # Arquitetura Transformer
+│   ├── tokenizers.py           # Tokenizers
+│   └── common.py               # Utilitários
+├── inference_api/              # API de inferência (FastAPI)
+│   ├── main.py                 # Endpoints
+│   ├── model_manager.py        # Gerenciamento de modelos
+│   ├── schemas.py              # Schemas Pydantic
+│   ├── metrics.py              # Métricas da aplicação
+│   └── logging_config.py       # Logging estruturado
+├── gateway/                    # API Gateway (NGINX)
+│   ├── Dockerfile              # Imagem do gateway
+│   └── nginx.conf              # Configuração NGINX
+├── monitoring/                 # Observabilidade
+│   └── prometheus.yml          # Configuração do Prometheus
+├── tests/                      # Testes automatizados
+│   └── test_api_contract.py    # Testes de contrato
+├── docker-compose.yml          # Orquestração de todos os serviços
+├── Dockerfile                  # Imagem base do projeto ML
+├── requirements.txt            # Dependências Python
+├── n8n_workflow.json           # Workflow exportado do n8n
+└── CHALLENGE.md                # Especificação do desafio
 ```
 
-**Response:**
-```json
-{
-  "translation": "Hello, how are you?",
-  "run_id": "nmt_20260225T130027Z_ap5vq0",
-  "latency_ms": 42.5
-}
+## 🔐 API Gateway
+
+O gateway NGINX implementa:
+
+- **Autenticação**: Requer header `X-Api-Key` com chave válida
+- **Rate Limiting**: 10 requisições/segundo por chave, com burst de 20
+- **Logging**: Registra IP, API key, método, status e tempo de resposta
+
+Respostas de erro:
+- `401` — API key não fornecida
+- `403` — API key inválida
+- `429` — Rate limit excedido
+
+## 🔄 CI/CD
+
+O pipeline GitHub Actions (`.github/workflows/ci.yml`) executa em todo push/PR na branch `main`:
+
+| Stage   | Descrição                                      |
+|---------|-------------------------------------------------|
+| Lint    | Verificação de qualidade com `ruff`             |
+| Test    | Execução dos testes com `pytest`                |
+| Build   | Build da imagem Docker                          |
+| Publish | Push da imagem para GitHub Container Registry   |
+
+Cada stage depende da anterior — se o lint falhar, os testes não rodam; se os testes falharem, o build não acontece.
+
+## 📊 Observabilidade
+
+| Pilar        | Ferramenta       | Descrição                                  |
+|-------------|------------------|--------------------------------------------|
+| Métricas    | Prometheus       | Coleta `/metrics` da API a cada 15s        |
+| Dashboards  | Grafana          | Visualização das métricas coletadas        |
+| Logs        | Docker Compose   | Logs estruturados (JSON) da API e pipeline |
+| Health Check| API `/health`    | Status do serviço e modelo carregado       |
+
+## 🎵 Orquestração (n8n)
+
+O workflow n8n orquestra o pipeline completo via webhook:
+
+```
+Webhook (POST) → Preparar Dados → Treinar → Validar → Publicar → Deploy
 ```
 
----
+- Disparado via HTTP POST no webhook do n8n
+- Cada etapa executa o container correspondente
+- A etapa de validação bloqueia o deploy se o modelo não atingir o threshold de qualidade
+- O `run_id` é passado entre etapas para rastreabilidade
 
-## ⚙️ Variáveis de Ambiente (API)
+## 📝 Decisões Técnicas
 
-| Variável | Padrão | Descrição |
-|---|---|---|
-| `ARTIFACTS_DIR` | `artifacts` | Diretório raiz dos artefatos |
-| `DEFAULT_RUN_ID` | *(vazio)* | `run_id` do modelo a carregar na inicialização |
-| `API_PORT` | `8000` | Porta exposta pelo Docker |
-
----
-
-## 🧪 Testes
-
-Os testes de contrato validam:
-
-- ✅ `/health` retorna `200` com `status`, `run_id` e `model_loaded`
-- ✅ `/predict` retorna `503`/`500` sem modelo carregado
-- ✅ `/predict` valida texto vazio (`422`) e texto acima de 512 caracteres (`422`)
-- ✅ `/metrics` retorna os três contadores como inteiros
-- ✅ `/metrics` incrementa corretamente após chamadas de `/predict`
-- ✅ `/model` retorna o campo `run_id`
-
----
-
-## 🛠️ Stack Tecnológica
-
-| Tecnologia | Uso |
-|---|---|
-| **Python 3.11** | Linguagem principal |
-| **TensorFlow 2.20** | Framework de ML (modelo + servindo) |
-| **TensorFlow Text 2.20** | Tokenização |
-| **TensorFlow Datasets** | Download do dataset ParaCrawl |
-| **FastAPI** | Framework da API REST |
-| **Uvicorn** | Servidor ASGI |
-| **Pytest + HTTPX** | Testes automatizados |
-| **Docker / Docker Compose** | Containerização e orquestração |
+- **NGINX como gateway**: Escolhido pela simplicidade de configuração e ampla adoção na indústria. Implementa autenticação, rate limiting e logging sem dependências extras.
+- **Prometheus + Grafana**: Stack padrão de observabilidade, se integra nativamente com endpoints `/metrics` já existentes na API.
+- **n8n como orquestrador**: Ferramenta visual que permite montar e modificar pipelines sem alterar código, alinhada com a proposta do desafio.
+- **GitHub Actions para CI/CD**: Integração nativa com o repositório GitHub, sem necessidade de infraestrutura adicional.

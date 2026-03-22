@@ -1,0 +1,155 @@
+{
+  "name": "MLOps Pipeline - EN/PT Translation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pipeline-trigger",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "922ce58c-b388-459e-bd4e-016e3d011a69",
+      "name": "Webhook",
+      "webhookId": "d207ae83-49bc-4a24-99af-66759adb0a3b"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execSync } = require('child_process');\nconst output = execSync('docker compose --profile prepare -f /workspace/docker-compose.yml up --exit-code-from prepare_dataset', {timeout: 600000}).toString();\nreturn [{ json: { stage: \"prepare\", output: output } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "51002df1-f260-4553-b3ae-dcb4b791e284",
+      "name": "Preparar Dados"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execSync } = require('child_process');\nconst output = execSync('EPOCHS=1 docker compose --profile train -f /workspace/docker-compose.yml up --exit-code-from train', {timeout: 600000}).toString();\nconst runIdMatch = output.match(/\"run_id\":\\s*\"([^\"]+)\"/);\nconst runId = runIdMatch ? runIdMatch[1] : 'unknown';\nreturn [{ json: { stage: \"train\", run_id: runId, output: output } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "f493aca6-6e0b-41f9-b2d7-0447dd830e36",
+      "name": "Treinar"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.all()[0].json;\nconst runId = input.run_id;\nconst fs = require('fs');\nconst metadata = JSON.parse(fs.readFileSync(`/workspace/artifacts/${runId}/metadata.json`, 'utf8'));\nconst approved = metadata.metric_value >= metadata.threshold;\nreturn [{ json: { stage: \"validate\", run_id: runId, approved: approved, metric: metadata.metric_value, threshold: metadata.threshold } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "a0460e50-af43-4df9-99c4-c94afc4faac4",
+      "name": "Validar"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.all()[0].json;\nif (!input.approved) throw new Error(\"Modelo rejeitado - deploy bloqueado\");\nconst runId = input.run_id;\nreturn [{ json: { stage: \"publish\", run_id: runId, status: \"published\" } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "78565aa8-9065-456f-9307-8fd6570eaeb3",
+      "name": "Publicar"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execSync } = require('child_process');\nconst input = $input.all()[0].json;\nconst runId = input.run_id;\nconst output = execSync(`DEFAULT_RUN_ID=${runId} docker compose --profile api -f /workspace/docker-compose.yml up -d`, {timeout: 300000}).toString();\nreturn [{ json: { stage: \"deploy\", run_id: runId, output: output } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "19d153d5-447e-4201-9246-8eb1a379abb3",
+      "name": "Deploy"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Preparar Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Dados": {
+      "main": [
+        [
+          {
+            "node": "Treinar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Treinar": {
+      "main": [
+        [
+          {
+            "node": "Validar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar": {
+      "main": [
+        [
+          {
+            "node": "Publicar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publicar": {
+      "main": [
+        [
+          {
+            "node": "Deploy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "3009e615-b776-430f-9ff1-124cb521ac09",
+  "meta": {
+    "instanceId": "0a1ec18813ebb3264062e5cfd8b1406eb12514ab8802c8fccbc0f68bb2f2cf88"
+  },
+  "id": "PQlJxvyxMRXKV8NN",
+  "tags": []
+}

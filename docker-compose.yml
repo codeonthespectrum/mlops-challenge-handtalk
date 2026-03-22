@@ -84,5 +84,46 @@ services:
     command: >
       bash -lc "pytest -q"
 
+  gateway:
+    profiles: ["gateway"]
+    build:
+      context: ./gateway
+    ports:
+      - "8080:80"
+    depends_on:
+        - api
+
+  prometheus:
+    profiles: ["monitoring"]
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+
+  grafana:
+    profiles: ["monitoring"]
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+  n8n:
+    profiles: ["n8n"]
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/workspace
+    environment:
+      - N8N_SECURITY_AUDIT_DAYS_ABANDONED_WORKFLOW=90
+    user: root
+
+    
 volumes:
   tfds_cache:
+  n8n_data:
